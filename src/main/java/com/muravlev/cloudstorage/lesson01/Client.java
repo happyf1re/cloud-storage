@@ -32,6 +32,7 @@ public class Client extends JFrame {
             } else if ("download".equals(cmd[0])) {
                 getFile(cmd[1]);
             } else {
+                //касаемо корректного выхода кнопкой "exit", то, что предлагал в телеграмме
                 for (int i = 0; i < cmd.length ; i++) {
                     sendMessage(cmd[i]);
                 }
@@ -48,13 +49,50 @@ public class Client extends JFrame {
             public void windowClosing(WindowEvent e) {
                 super.windowClosing(e);
                 sendMessage("exit");
+                try {
+                    socket.close();
+                } catch (IOException a) {
+                    a.printStackTrace();
+                }
             }
         });
         setVisible(true);
     }
 
-    private void getFile(String s) {
+    private void getFile(String filename) {
         // TODO: 14.06.2021
+        //копипаста...
+        //1. Выполнить задания по TODO (2 штуки) (организовать скачивание файлов с сервера)
+        try {
+            File file = new File("server" + File.separator + filename);
+            if (!file.exists()) {
+                throw  new FileNotFoundException();
+            }
+
+            long fileLength = file.length();
+            FileInputStream fis = new FileInputStream(file);
+
+            out.writeUTF("download");
+            out.writeUTF(filename);
+            out.writeLong(fileLength);
+
+            int read = 0;
+            byte[] buffer = new byte[8 * 1024];
+            while ((read = fis.read(buffer)) != -1) {
+                out.write(buffer, 0, read);
+            }
+
+            out.flush();
+
+            String status = in.readUTF();
+            System.out.println("downloading status: " + status);
+
+        } catch (FileNotFoundException e) {
+            e.printStackTrace();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
     }
 
     private void sendFile(String filename) {
@@ -76,7 +114,6 @@ public class Client extends JFrame {
             while ((read = fis.read(buffer)) != -1) {
                 out.write(buffer, 0, read);
             }
-
             out.flush();
 
             String status = in.readUTF();
