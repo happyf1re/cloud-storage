@@ -127,7 +127,7 @@ public class NioTelnetServer {
                 sendMessage(RM_COMMAND, selector, client);
                 sendMessage(COPY_COMMAND, selector, client);
                 sendMessage(CAT_COMMAND, selector, client);
-
+//коммент для гита
             } else if ("ls".equals(command)) {
                 channel.write(ByteBuffer.wrap((clients.get(channel.getRemoteAddress()) + "~" + clientpath.get(channel.getRemoteAddress()) + ": \n").getBytes(StandardCharsets.UTF_8)));
                 sendMessage(getFilesList().concat("\n"), selector, client);
@@ -183,6 +183,7 @@ public class NioTelnetServer {
 
     // touch (filename) - создание файла
     //коммент для пуллреквеста, ниже метод
+    //коммент для пуллреквеста, ниже метод
     private void createFile(SelectionKey key, String filename) throws IOException {
         SocketChannel channel = (SocketChannel) key.channel();
         Path path1 = Path.of("root", clients.get(channel.getRemoteAddress()), filename);
@@ -197,16 +198,18 @@ public class NioTelnetServer {
 
     // mkdir (dirname) - создание директории
     //коммент для пуллреквеста, ниже метод
+    //коммент для пуллреквеста, ниже метод
     private void createDirectory(SelectionKey key, String directoryname) throws IOException {
         SocketChannel channel = (SocketChannel) key.channel();
         Files.createDirectories(Path.of("root", clients.get(channel.getRemoteAddress()), directoryname));
     }
-
+    //коммент для пуллреквеста, ниже метод
     // changenick (nickname) - изменение имени пользователя
     // добавить имя клиента
     //коммент для пуллреквеста, ниже метод
     //при коннекте мы присваиваем ник клиенту, который равен строковому представлению его адреса
     //и заносим его в мапу... метод ниже позволяет сменить ник
+    //коммент для пуллреквеста, ниже метод
     public void changeNick(SelectionKey key, String newNick) throws IOException {
         SocketChannel channel = (SocketChannel) key.channel();
         SocketAddress client = channel.getRemoteAddress();
@@ -215,6 +218,7 @@ public class NioTelnetServer {
         channel.write(ByteBuffer.wrap(("New nickname: " + clients.get(client) + "\n").getBytes(StandardCharsets.UTF_8)));
     }
 
+    //коммент для пуллреквеста, ниже метод
     // cd (path | ~ | ..) - изменение текущего положения
     //работает криво, прошу время доработать
     private String changeDirectory(SelectionKey key, Path newpath) throws IOException {
@@ -230,6 +234,7 @@ public class NioTelnetServer {
         return path.toString();
     }
 
+    //коммент для пуллреквеста, ниже метод
     // rm (filename / dirname) - удаление файла / директории
     // сделал через walkFileTree, работает более ли менее корректно
     private void deleteFile(String filename) throws IOException {
@@ -257,6 +262,7 @@ public class NioTelnetServer {
         });
     }
 
+    //коммент для пуллреквеста, ниже метод
 
     // copy (src) (target) - копирование файлов / директории
     // не работает, знаю, как исправить, дело в том, где он ищет файл
@@ -274,6 +280,7 @@ public class NioTelnetServer {
         });
     }
 
+    //коммент для пуллреквеста, ниже метод
 
     // cat (filename) - вывод содержимого текстового файла
     private void readFile(Path file) throws IOException {
