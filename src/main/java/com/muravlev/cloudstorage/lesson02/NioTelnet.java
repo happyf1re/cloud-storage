@@ -2,7 +2,6 @@ package com.muravlev.cloudstorage.lesson02;
 
 import java.io.File;
 import java.io.IOException;
-import java.io.RandomAccessFile;
 import java.net.InetSocketAddress;
 import java.net.SocketAddress;
 import java.nio.ByteBuffer;
@@ -10,10 +9,7 @@ import java.nio.channels.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import java.nio.file.attribute.BasicFileAttributes;
-import java.util.HashMap;
-import java.util.Iterator;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 
 public class NioTelnet {
     private static final String LS_COMMAND = "ls view all files from current director\n";
@@ -25,16 +21,12 @@ public class NioTelnet {
     private static final String COPY_COMMAND = "copy to copy file\n";
     private static final String CAT_COMMAND = "cat to show file\n";
 
+    Path serverRoot = Path.of("root");
+
     private final ByteBuffer buffer = ByteBuffer.allocate(512);
 
-    private Map<SocketAddress, String> clients = new HashMap<>();
+    private Map<SocketChannel, String> clients = new HashMap<SocketChannel, String>();
 
-
-    //мапа для получения директории клиента
-    private Map<SocketAddress, Path> clientpath = new HashMap<>();
-
-    String root = "root";
-    Path path = Path.of(root);
 
     public NioTelnet() throws Exception {
         ServerSocketChannel server = ServerSocketChannel.open();
@@ -67,21 +59,6 @@ public class NioTelnet {
         channel.register(selector, SelectionKey.OP_READ, "skjghksdhg");
         channel.write(ByteBuffer.wrap(("Hello " + channel.getRemoteAddress().toString() + "\n").getBytes(StandardCharsets.UTF_8)));
         channel.write(ByteBuffer.wrap("Enter --help for support info\n".getBytes(StandardCharsets.UTF_8)));
-
-        // Path clientfirstpath = Path.of("root", clients.get(channel.getRemoteAddress()));
-
-        //просто к примеру вручную присваиваем пользователю какой-то начальный ник
-        //хотел сделать начальным ником его адрес, но символ : не подходит для этого
-        clients.put(channel.getRemoteAddress(), "default_user");
-
-        //создаём директорию для пользователя
-        if (!Files.exists(Path.of("root", clients.get(channel.getRemoteAddress())))) {
-            Files.createDirectory(Path.of("root", clients.get(channel.getRemoteAddress())));
-        }
-
-        //помещаем в мапу clientpath путь для текущего юзера (делаю для одного клиента)
-        clientpath.put(channel.getRemoteAddress(), Path.of("root", clients.get(channel.getRemoteAddress())));
-        //channel.write(ByteBuffer.wrap(("Currpath: " +(Path.of("root", clients.get(channel.getRemoteAddress())))).getBytes(StandardCharsets.UTF_8)));
     }
 
 
@@ -90,10 +67,12 @@ public class NioTelnet {
         SocketAddress client = channel.getRemoteAddress();
         int readBytes = channel.read(buffer);
 
+        clients.putIfAbsent(channel, "user");
+
         if (readBytes < 0) {
             channel.close();
             return;
-        } else  if (readBytes == 0) {
+        } else if (readBytes == 0) {
             return;
         }
 
@@ -121,7 +100,6 @@ public class NioTelnet {
                     .replace("\n", "")
                     .replace("\r", "");
             if ("--help".equals(command)) {
-                channel.write(ByteBuffer.wrap((clients.get(channel.getRemoteAddress()) + "~" + clientpath.get(channel.getRemoteAddress()) + ": \n").getBytes(StandardCharsets.UTF_8)));
                 sendMessage(LS_COMMAND, selector, client);
                 sendMessage(MKDIR_COMMAND, selector, client);
                 sendMessage(TOUCH_COMMAND, selector, client);
@@ -130,38 +108,37 @@ public class NioTelnet {
                 sendMessage(COPY_COMMAND, selector, client);
                 sendMessage(CAT_COMMAND, selector, client);
 
+
+                //добавил корректные выводы
             } else if ("ls".equals(command)) {
-                channel.write(ByteBuffer.wrap((clients.get(channel.getRemoteAddress()) + "~" + clientpath.get(channel.getRemoteAddress()) + ": \n").getBytes(StandardCharsets.UTF_8)));
+                //channel.write(ByteBuffer.wrap((clients.get(channel.getRemoteAddress()) + "~" + serverRoot + ": \n").getBytes(StandardCharsets.UTF_8)));
                 sendMessage(getFilesList().concat("\n"), selector, client);
                 //коммент для пуллреквеста, ниже команда
             } else if (command.startsWith("touch")) {
-                channel.write(ByteBuffer.wrap((clients.get(channel.getRemoteAddress()) + "~" + clientpath.get(channel.getRemoteAddress()) + ": \n").getBytes(StandardCharsets.UTF_8)));
-                //строку на токены
                 String[] tokens = command.split(" ");
-                createFile(key, tokens[1]);
+                sendMessage(createFile(serverRoot, tokens[1]), selector, client);
             } else if (command.startsWith("changenickname")) {
-                channel.write(ByteBuffer.wrap((clients.get(channel.getRemoteAddress()) + "~" + clientpath.get(channel.getRemoteAddress()) + ": \n").getBytes(StandardCharsets.UTF_8)));
                 String[] tokens = command.split(" ");
-                changeNick(key, tokens[1]);
+                sendMessage(changeNick(client, tokens[1]), selector, client);
             } else if (command.startsWith("mkdir")) {
-                channel.write(ByteBuffer.wrap((clients.get(channel.getRemoteAddress()) + "~" + clientpath.get(channel.getRemoteAddress()) + ": \n").getBytes(StandardCharsets.UTF_8)));
                 String[] tokens = command.split(" ");
-                createDirectory(key, tokens[1]);
+                sendMessage(createDirectory(tokens[1], serverRoot), selector, client);
             } else if (command.startsWith("cd")) {
-                channel.write(ByteBuffer.wrap((clients.get(channel.getRemoteAddress()) + "~" + clientpath.get(channel.getRemoteAddress()) + ": \n").getBytes(StandardCharsets.UTF_8)));
                 String[] tokens = command.split(" ");
-                changeDirectory(key, Path.of(tokens[1]));
+                sendMessage(changeDirectory(tokens[1]), selector, client);
+            } else if (command.startsWith("~")) {
+                sendMessage(changeDirectoryToRoot(), selector, client);
+            } else if (command.startsWith("..")) {
+                sendMessage(changeDirectoryUp(), selector, client);
             } else if (command.startsWith("rm")) {
                 String[] tokens = command.split(" ");
-                deleteFile(tokens[1]);
+                sendMessage(deleteFile(tokens[1], serverRoot), selector, client);
             } else if (command.startsWith("copy")) {
-                channel.write(ByteBuffer.wrap((clients.get(channel.getRemoteAddress()) + "~" + clientpath.get(channel.getRemoteAddress()) + ": \n").getBytes(StandardCharsets.UTF_8)));
                 String[] tokens = command.split(" ");
-                copyFile(tokens[1], Path.of(tokens[2]));
+                sendMessage(copyFile(tokens[1], serverRoot, tokens[2]), selector, client);
             } else if (command.startsWith("cat")) {
-                channel.write(ByteBuffer.wrap((clients.get(channel.getRemoteAddress()) + "~" + clientpath.get(channel.getRemoteAddress()) + ": \n").getBytes(StandardCharsets.UTF_8)));
                 String[] tokens = command.split(" ");
-                readFile(Path.of(tokens[1]));
+                sendMessage(readFile(tokens[1], serverRoot), selector, client);
             }
 
         }
@@ -177,30 +154,34 @@ public class NioTelnet {
         }
     }
 
+    //корректный вывод файлов в текущем каталоге
     private String getFilesList() {
-        String[] servers = new File("server").list();
+        String[] servers = new File(String.valueOf(Path.of(String.valueOf(serverRoot)))).list();
         return String.join(" ", servers);
     }
 
     // touch (filename) - создание файла
     //коммент для пуллреквеста, ниже метод
-    private void createFile(SelectionKey key, String filename) throws IOException {
-        SocketChannel channel = (SocketChannel) key.channel();
-        Path path1 = Path.of("root", clients.get(channel.getRemoteAddress()), filename);
-        if (!Files.exists(path1)) {
-            try {
-                Files.createFile(path1);
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
+    //метод упрощён и переделан
+    private String createFile(Path serverRoot, String fileName) throws IOException {
+        if (!Files.exists(Path.of(String.valueOf(serverRoot), fileName))) {
+            Files.createFile(Path.of(String.valueOf(serverRoot), fileName));
+            return "File " + fileName + " created.\n";
+        } else {
+            return "File " + fileName + " already exists\n";
         }
     }
 
     // mkdir (dirname) - создание директории
     //коммент для пуллреквеста, ниже метод
-    private void createDirectory(SelectionKey key, String directoryname) throws IOException {
-        SocketChannel channel = (SocketChannel) key.channel();
-        Files.createDirectories(Path.of("root", clients.get(channel.getRemoteAddress()), directoryname));
+    //метод упрощён и переделан
+    private String createDirectory(String dir, Path serverRoot) throws IOException {
+        if (!Files.exists(Path.of(String.valueOf(serverRoot), dir))) {
+            Files.createDirectory(Path.of(String.valueOf(serverRoot), dir));
+            return "Directory " + dir + " created.\n";
+        } else {
+            return "Directory " + dir + " already exists\n";
+        }
     }
 
     // changenick (nickname) - изменение имени пользователя
@@ -208,92 +189,77 @@ public class NioTelnet {
     //коммент для пуллреквеста, ниже метод
     //при коннекте мы присваиваем ник клиенту, который равен строковому представлению его адреса
     //и заносим его в мапу... метод ниже позволяет сменить ник
-    public void changeNick(SelectionKey key, String newNick) throws IOException {
-        SocketChannel channel = (SocketChannel) key.channel();
-        SocketAddress client = channel.getRemoteAddress();
-        channel.write(ByteBuffer.wrap(("Old nickname: " + clients.get(client) + "\n").getBytes(StandardCharsets.UTF_8)));
-        clients.put(client, newNick);
-        channel.write(ByteBuffer.wrap(("New nickname: " + clients.get(client) + "\n").getBytes(StandardCharsets.UTF_8)));
+
+    //Новый метод
+    //метод упрощён и переделан
+    public String changeNick(SocketAddress client, String newNick) throws IOException {
+        clients.replaceAll((k, v) -> newNick);
+        return "New nickname " + newNick;
     }
 
     // cd (path | ~ | ..) - изменение текущего положения
     //работает криво, прошу время доработать
-    private String changeDirectory(SelectionKey key, Path newpath) throws IOException {
-        SocketChannel channel = (SocketChannel) key.channel();
-        Path currentpath = clientpath.get(channel.getRemoteAddress());
-        Path path = Paths.get(clientpath.get(channel.getRemoteAddress()) + File.separator + newpath).normalize();
-        if (Files.exists(path)) {
-            clientpath.put(channel.getRemoteAddress(), path);
-            channel.write(ByteBuffer.wrap(("Current path: " + clientpath.get(channel.getRemoteAddress()).toString()).getBytes(StandardCharsets.UTF_8)));
+    //доработал метод, реализация ~ и .. ниже в отдельных методах
+    private String changeDirectory(String change) {
+        if (Files.exists(Path.of(String.valueOf(serverRoot), change))) {
+            serverRoot = Path.of(String.valueOf(serverRoot), change);
+            return "change directory " + serverRoot;
         } else {
-            return "ERROR: The path does not exist!\n\r";
+            return "Directory " + change + " doesn't exists\n";
         }
-        return path.toString();
+    }
+
+    //сделал отдельные методы для возвращение в рут и на одну папку
+    private String changeDirectoryToRoot() {
+        serverRoot = Path.of("root");
+        return "change directory " + serverRoot;
+    }
+
+    private String changeDirectoryUp() {
+        serverRoot = serverRoot.getParent();
+        return "change directory " + serverRoot;
     }
 
     // rm (filename / dirname) - удаление файла / директории
     // сделал через walkFileTree, работает более ли менее корректно
-    private void deleteFile(String filename) throws IOException {
-        Files.walkFileTree(path, new SimpleFileVisitor<>() {
+    private String deleteFile(String fileName, Path serverRoot) throws IOException {
+        Path pathRM = Path.of(serverRoot + "/" + fileName);
+        Files.walkFileTree(pathRM, new SimpleFileVisitor<Path>() {
             @Override
             public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
-                if (filename.equals(file.getFileName().toString())) {
-                    Files.delete(file.toAbsolutePath());
-                    return FileVisitResult.CONTINUE;
-                }
+                Files.delete(file);
                 return FileVisitResult.CONTINUE;
             }
 
             @Override
             public FileVisitResult postVisitDirectory(Path dir, IOException exc) throws IOException {
-                if (exc != null) {
-                    throw exc;
-                }
-                if (filename.equals(dir.getFileName().toString())) {
-                    Files.delete(dir);
-                    return FileVisitResult.CONTINUE;
-                }
+                Files.delete(dir);
                 return FileVisitResult.CONTINUE;
             }
         });
+        return "File/directory " + fileName + " deleted.\n";
     }
 
 
-    // copy (src) (target) - копирование файлов / директории
-    // не работает, знаю, как исправить, дело в том, где он ищет файл
-    private void copyFile(String filename, Path to) throws IOException {
-        Files.walkFileTree(path, new SimpleFileVisitor<>() {
-            @Override
-            public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
-                if (filename.equals(file.getFileName().toString())) {
-                    //Files.copy(filename, to.resolve(from.relativize(filename)));
-                    Files.copy(Path.of(filename), to);
-                    return FileVisitResult.CONTINUE;
-                }
-                return FileVisitResult.CONTINUE;
-            }
-        });
+    //исправлено
+    private String copyFile(String fileName, Path serverRoot, String target) throws IOException {
+        Files.copy((Path.of(String.valueOf(serverRoot), fileName)), (Path.of(String.valueOf(serverRoot), target)));
+        return "File/Directory " + fileName + " copy in " + target;
     }
 
 
     // cat (filename) - вывод содержимого текстового файла
-    private void readFile(Path file) throws IOException {
-        FileChannel channel = new RandomAccessFile("root" + File.separator + file.getFileName().toString(), "rw").getChannel();
-        ByteBuffer buffer = ByteBuffer.allocate(1000);
-        channel.read(buffer);
-        buffer.flip();
-
-        byte[] byteBuf = new byte [1000];
-        int pos = 0;
-        while (buffer.hasRemaining()) {
-            byteBuf[pos++] = buffer.get();
+    //исправлено
+    private String readFile(String fileName, Path serverRoot) throws IOException {
+        List<String> textFile = Files.readAllLines(Path.of(String.valueOf(serverRoot), fileName), StandardCharsets.UTF_8);
+        for (String s : textFile) {
+            return s;
         }
-        channel.write(ByteBuffer.wrap((new String(byteBuf, StandardCharsets.UTF_8).getBytes(StandardCharsets.UTF_8))));
+        return "\n";
 
-        buffer.rewind();
     }
 
     public static void main(String[] args) throws Exception {
-        new NioTelnetServer();
+        new NioTelnet();
     }
 }
